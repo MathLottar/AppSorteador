@@ -1,15 +1,14 @@
-# Importações necessárias
 from flask import Flask, request, jsonify
-from flask_cors import CORS # <-- 1. IMPORTAÇÃO NOVA
+from flask_cors import CORS # Importação necessária
 import statistics
 import random
 
 # --- CONFIGURAÇÃO DO SERVIDOR FLASK ---
 app = Flask(__name__)
-CORS(app) # <-- 2. ATIVAÇÃO DO CORS PARA TODA A APLICAÇÃO
+# ATIVAÇÃO DO CORS DE FORMA ESPECÍFICA E PERMISSIVA PARA A ROTA
+CORS(app, resources={r"/balancear": {"origins": "*"}})
 
 # --- O RESTANTE DO CÓDIGO CONTINUA EXATAMENTE IGUAL ---
-
 def balancear_times_avancado(jogadores, num_times, pessoas_por_time, pesos):
     # (Toda a sua lógica de balanceamento aqui, sem nenhuma alteração)
     jogadores_necessarios = num_times * pessoas_por_time
