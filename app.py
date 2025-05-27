@@ -9,32 +9,30 @@ app = Flask(__name__,
             static_folder='static',
             template_folder='templates')
 
-# --- CONFIGURAÇÃO DO BANCO DE DADOS (VERSÃO ROBUSTA) ---
-# Define o caminho base do projeto, usado para o banco de dados SQLite local
+# --- CONFIGURAÇÃO DO BANCO DE DADOS (TENTATIVA SSL NA URL) ---
 basedir = os.path.abspath(os.path.dirname(__file__))
-
 database_url_from_env = os.environ.get('DATABASE_URL')
 
 if database_url_from_env:
-    # Se estiver rodando no Render (ou qualquer ambiente com DATABASE_URL definido)
-    # Garante que a URL use 'postgresql://' que é o esperado pelo SQLAlchemy
+    # Garante que a URL use 'postgresql://'
     if database_url_from_env.startswith("postgres://"):
         database_url_from_env = database_url_from_env.replace("postgres://", "postgresql://", 1)
     
+    # Adiciona '?sslmode=require' se for postgresql e não tiver 'sslmode' já na URL
+    if database_url_from_env.startswith("postgresql://") and "sslmode" not in database_url_from_env:
+        database_url_from_env += "?sslmode=require"
+        
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url_from_env
-    # Adiciona explicitamente as opções do engine para SSL quando for PostgreSQL
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        'connect_args': {'sslmode': 'require'}
-    }
+    # Com o sslmode na URI, podemos remover ou comentar as engine_options para evitar conflito
+    if 'SQLALCHEMY_ENGINE_OPTIONS' in app.config:
+        del app.config['SQLALCHEMY_ENGINE_OPTIONS']
 else:
-    # Configuração para o banco de dados SQLite local se DATABASE_URL não estiver definida
+    # Configuração para SQLite local
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'app_local.db')
-    # Opcional: remove engine_options se estiver usando SQLite e elas foram definidas por algum motivo
     if 'SQLALCHEMY_ENGINE_OPTIONS' in app.config:
         del app.config['SQLALCHEMY_ENGINE_OPTIONS']
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
 db = SQLAlchemy(app)
 # --- FIM DA CONFIGURAÇÃO DO BANCO DE DADOS ---
 
