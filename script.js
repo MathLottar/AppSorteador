@@ -88,7 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         try {
-            const response = await fetch('http://127.0.0.1:5000/balancear', {
+            const response = await fetch('https://appsorteador.onrender.com/balancear', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
