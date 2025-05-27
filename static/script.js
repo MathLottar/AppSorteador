@@ -10,16 +10,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const notaLevantamentoInput = document.getElementById('nota-levantamento');
     const notaAtaqueInput = document.getElementById('nota-ataque');
     const notaMovimentacaoInput = document.getElementById('nota-movimentacao');
-    const btnAdicionar = document.getElementById('btn-adicionar');
+
+    const btnAdicionar = document.getElementById('btn-adicionar'); // Este botão agora terá dupla função
     const listaJogadoresUl = document.getElementById('lista-jogadores');
     const contadorJogadoresSpan = document.getElementById('contador-jogadores');
+
     const btnBalancear = document.getElementById('btn-balancear');
     const areaResultados = document.getElementById('area-resultados');
     const timesContainer = document.getElementById('times-container');
     const bancoContainer = document.getElementById('banco-container');
 
-    // --- VARIÁVEL PARA GUARDAR NOSSOS DADOS ---
+    // --- VARIÁVEIS DE ESTADO ---
     let jogadores = [];
+    let editandoJogadorId = null; // NOVO: Controla se estamos editando e qual jogador
 
     // --- FUNÇÕES ---
 
@@ -40,23 +43,31 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // MODIFICADO: O botão de remover agora chama excluirJogadorDoBanco
+    // MODIFICADO: Adiciona botão "Editar"
     function renderizarListaJogadores() {
         listaJogadoresUl.innerHTML = '';
-        jogadores.forEach((jogador) => { // Removido 'index' pois usaremos jogador.id
+        jogadores.forEach((jogador) => {
             const li = document.createElement('li');
             li.textContent = `${jogador.nome} (Gênero: ${jogador.genero})`;
 
-            const excluirBtn = document.createElement('button'); // Nome do botão alterado para clareza
-            excluirBtn.textContent = 'Excluir';
-            excluirBtn.className = 'btn-excluir'; // Adicionada uma classe para possível estilização
-            excluirBtn.style.width = 'auto';
-            excluirBtn.style.backgroundColor = '#ef4444'; // Vermelho
-            excluirBtn.style.marginLeft = '10px'; // Adiciona um espaço
+            // Botão Editar
+            const editarBtn = document.createElement('button');
+            editarBtn.textContent = 'Editar';
+            editarBtn.className = 'btn-editar'; // NOVO
+            editarBtn.style.width = 'auto';
+            editarBtn.style.backgroundColor = '#f9a825'; // Amarelo/Laranja
+            editarBtn.style.marginLeft = '10px';
+            editarBtn.onclick = () => prepararFormularioParaEdicao(jogador); // NOVO: Chama função para popular form
+            li.appendChild(editarBtn);
 
-            // MODIFICADO: Chama a função para excluir do banco
+            // Botão Excluir
+            const excluirBtn = document.createElement('button');
+            excluirBtn.textContent = 'Excluir';
+            excluirBtn.className = 'btn-excluir';
+            excluirBtn.style.width = 'auto';
+            excluirBtn.style.backgroundColor = '#ef4444';
+            excluirBtn.style.marginLeft = '10px';
             excluirBtn.onclick = () => {
-                // Adiciona uma confirmação antes de excluir
                 if (confirm(`Tem certeza que deseja excluir ${jogador.nome} permanentemente?`)) {
                     excluirJogadorDoBanco(jogador.id);
                 }
@@ -67,13 +78,50 @@ document.addEventListener('DOMContentLoaded', () => {
         contadorJogadoresSpan.textContent = jogadores.length;
     }
 
-    async function adicionarJogador() {
+    // NOVO: Função para preencher o formulário com dados do jogador para edição
+    function prepararFormularioParaEdicao(jogador) {
+        editandoJogadorId = jogador.id; // Guarda o ID do jogador que estamos editando
+
+        nomeJogadorInput.value = jogador.nome;
+        generoJogadorSelect.value = jogador.genero;
+        notaSaqueInput.value = jogador.notas.saque;
+        notaPasseInput.value = jogador.notas.passe;
+        notaLevantamentoInput.value = jogador.notas.levantamento;
+        notaAtaqueInput.value = jogador.notas.ataque;
+        notaMovimentacaoInput.value = jogador.notas.movimentacao;
+
+        btnAdicionar.textContent = 'Salvar Alterações'; // Muda o texto do botão
+        // Opcional: Mudar o título da seção
+        // document.querySelector('section.card h2').textContent = '2. Editar Jogador'; 
+        nomeJogadorInput.focus();
+    }
+
+    // NOVO: Função para resetar o formulário para o modo "Adicionar"
+    function resetarFormulario() {
+        editandoJogadorId = null;
+        nomeJogadorInput.value = '';
+        generoJogadorSelect.value = 'F'; // Valor padrão
+        notaSaqueInput.value = 3;       // Valor padrão
+        notaPasseInput.value = 3;       // Valor padrão
+        notaLevantamentoInput.value = 3;// Valor padrão
+        notaAtaqueInput.value = 3;      // Valor padrão
+        notaMovimentacaoInput.value = 3;// Valor padrão
+        btnAdicionar.textContent = 'Adicionar Jogador à Lista';
+        // Opcional: Voltar o título da seção
+        // document.querySelector('section.card h2').textContent = '2. Adicionar Jogador';
+        nomeJogadorInput.focus();
+    }
+
+
+    // MODIFICADO: Função principal do formulário agora decide se Adiciona ou Edita
+    async function manipularEnvioFormularioJogador() {
         const nome = nomeJogadorInput.value.trim();
         if (!nome) {
             alert('Por favor, digite o nome do jogador.');
             return;
         }
-        const jogadorParaSalvar = { /* ... (como antes) ... */
+
+        const dadosJogador = {
             nome: nome,
             genero: generoJogadorSelect.value,
             notas: {
@@ -84,46 +132,64 @@ document.addEventListener('DOMContentLoaded', () => {
                 movimentacao: parseInt(notaMovimentacaoInput.value)
             }
         };
-        try {
-            const response = await fetch('/jogador/adicionar', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', },
-                body: JSON.stringify(jogadorParaSalvar)
-            });
-            if (!response.ok) {
-                const errData = await response.json().catch(() => ({ erro: "Erro desconhecido ao salvar jogador." }));
-                throw errData;
+
+        if (editandoJogadorId !== null) {
+            // Estamos no MODO EDIÇÃO
+            try {
+                const response = await fetch(`/jogador/editar/${editandoJogadorId}`, { // URL RELATIVA
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dadosJogador)
+                });
+                if (!response.ok) {
+                    const errData = await response.json().catch(() => ({ erro: "Erro desconhecido ao editar jogador." }));
+                    throw errData;
+                }
+                const data = await response.json();
+                console.log('Jogador editado no banco:', data.jogador);
+                alert(data.mensagem);
+                resetarFormulario(); // Volta ao modo de adição
+                await carregarJogadoresDoBanco();
+            } catch (error) {
+                console.error('Erro ao editar jogador:', error);
+                alert(`Erro ao editar jogador: ${error.erro || 'Verifique a conexão.'}`);
             }
-            const data = await response.json();
-            console.log('Jogador salvo no banco:', data.jogador);
-            await carregarJogadoresDoBanco();
-        } catch (error) {
-            console.error('Erro ao salvar jogador no banco:', error);
-            const mensagemErro = error.erro || 'Erro de conexão ao tentar salvar jogador.';
-            alert(mensagemErro);
+        } else {
+            // Estamos no MODO ADIÇÃO (como antes)
+            try {
+                const response = await fetch('/jogador/adicionar', { // URL RELATIVA
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(dadosJogador)
+                });
+                if (!response.ok) {
+                    const errData = await response.json().catch(() => ({ erro: "Erro desconhecido ao salvar jogador." }));
+                    throw errData;
+                }
+                const data = await response.json();
+                console.log('Jogador salvo no banco:', data.jogador);
+                // alert(data.mensagem); // Opcional
+                resetarFormulario(); // Limpa o formulário e mantém no modo de adição
+                await carregarJogadoresDoBanco();
+            } catch (error) {
+                console.error('Erro ao salvar jogador no banco:', error);
+                alert(`Erro ao salvar jogador: ${error.erro || 'Verifique a conexão.'}`);
+            }
         }
-        nomeJogadorInput.value = '';
-        nomeJogadorInput.focus();
     }
 
-    // NOVO: Função para excluir um jogador do banco de dados
     async function excluirJogadorDoBanco(jogadorId) {
+        // ... (como antes) ...
         try {
-            const response = await fetch(`/jogador/excluir/${jogadorId}`, {
-                method: 'DELETE' // Usamos o método HTTP DELETE
-            });
-
+            const response = await fetch(`/jogador/excluir/${jogadorId}`, { method: 'DELETE' });
             if (!response.ok) {
                 const errData = await response.json().catch(() => ({ erro: "Erro desconhecido ao excluir jogador." }));
                 throw errData;
             }
             const data = await response.json();
-            console.log(data.mensagem); // Ex: "Jogador 'Nome' excluído com sucesso!"
-            alert(data.mensagem); // Mostra a mensagem de sucesso
-
-            // Recarrega a lista de jogadores do banco para atualizar a tela
+            console.log(data.mensagem);
+            alert(data.mensagem);
             await carregarJogadoresDoBanco();
-
         } catch (error) {
             console.error('Erro ao excluir jogador:', error);
             const mensagemErro = error.erro || 'Não foi possível excluir o jogador.';
@@ -132,6 +198,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function balancearTimes() {
+        // ... (como antes, mas usando a variável 'jogadores' que é carregada do banco) ...
         if (jogadores.length === 0) {
             alert('Não há jogadores carregados ou adicionados para balancear!');
             return;
@@ -140,12 +207,7 @@ document.addEventListener('DOMContentLoaded', () => {
             num_times: parseInt(numTimesInput.value),
             pessoas_por_time: parseInt(pessoasPorTimeInput.value),
             jogadores: jogadores,
-            pesos: {
-                "tecnico": 1.0,
-                "tamanho": 2.0,
-                "talentos": 1.5,
-                "genero": 1.2
-            }
+            pesos: { "tecnico": 1.0, "tamanho": 2.0, "talentos": 1.5, "genero": 1.2 }
         };
         try {
             const response = await fetch('/balancear', {
@@ -166,6 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderizarResultados(resultado) {
+        // ... (como antes) ...
         timesContainer.innerHTML = '';
         bancoContainer.innerHTML = '';
         resultado.times_balanceados.forEach((time, index) => {
@@ -212,7 +275,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- "OUVIDORES" DE EVENTOS ---
-    btnAdicionar.addEventListener('click', adicionarJogador);
+    // MODIFICADO: O botão 'btnAdicionar' agora chama 'manipularEnvioFormularioJogador'
+    btnAdicionar.addEventListener('click', manipularEnvioFormularioJogador);
     btnBalancear.addEventListener('click', balancearTimes);
 
     // --- INICIALIZAÇÃO ---

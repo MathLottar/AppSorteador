@@ -186,3 +186,13 @@ button:hover {
     display: flex;
     justify-content: space-between;
 }
+
+/* Estilo para o botão Editar */
+.btn-editar {
+    background-color: #f59e0b;
+    /* Um tom de amarelo/laranja */
+}
+
+.btn-editar:hover {
+    background-color: #d97706;
+}

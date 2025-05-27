@@ -42,7 +42,8 @@ CORS(app, resources={
     r"/balancear": {"origins": "*"},
     r"/jogador/adicionar": {"origins": "*"},
     r"/jogadores": {"origins": "*"},
-    r"/jogador/excluir/<int:jogador_id>": {"origins": "*"}
+    r"/jogador/excluir/<int:jogador_id>": {"origins": "*"},
+    r"/jogador/editar/<int:jogador_id>": {"origins": "*"} # <-- ADICIONE ESTA
 })
 
 # --- MODELO DE DADOS ---
@@ -120,6 +121,43 @@ def excluir_jogador_db(jogador_id):
         db.session.rollback()
         app.logger.error(f"Erro ao excluir jogador ID {jogador_id}: {e}", exc_info=True)
         return jsonify({"erro": "Erro interno ao excluir jogador"}), 500
+
+# ROTA PARA EDITAR/ATUALIZAR UM JOGADOR EXISTENTE NO BANCO
+@app.route('/jogador/editar/<int:jogador_id>', methods=['PUT'])
+def editar_jogador_db(jogador_id):
+    try:
+        jogador_para_editar = Jogador.query.get_or_404(jogador_id)
+        dados = request.get_json()
+
+        # Validação básica dos dados recebidos
+        if not dados:
+            return jsonify({"erro": "Nenhum dado fornecido para atualização"}), 400
+        
+        # Atualiza os campos do objeto jogador com os dados recebidos
+        # Usamos .get() para o caso de algum campo não ser enviado na requisição
+        jogador_para_editar.nome = dados.get('nome', jogador_para_editar.nome)
+        jogador_para_editar.genero = dados.get('genero', jogador_para_editar.genero)
+        
+        # Para as notas, se 'notas' estiver nos dados, atualize. Senão, mantenha as antigas.
+        if 'notas' in dados:
+            jogador_para_editar.notas = dados['notas']
+        
+        db.session.commit() # Salva as alterações no banco
+        
+        return jsonify({
+            "mensagem": f"Jogador '{jogador_para_editar.nome}' atualizado com sucesso!",
+            "jogador": {
+                "id": jogador_para_editar.id,
+                "nome": jogador_para_editar.nome,
+                "genero": jogador_para_editar.genero,
+                "notas": jogador_para_editar.notas
+            }
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Erro ao editar jogador ID {jogador_id}: {e}", exc_info=True)
+        return jsonify({"erro": "Erro interno ao editar jogador"}), 500
+
 
 @app.route('/balancear', methods=['POST'])
 def handle_balanceamento():
