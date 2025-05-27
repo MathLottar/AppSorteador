@@ -41,7 +41,7 @@ CORS(app, resources={
     r"/jogador/adicionar": {"origins": "*"},
     r"/jogadores": {"origins": "*"},
     r"/jogador/excluir/<int:jogador_id>": {"origins": "*"},
-    r"/jogador/editar/<int:jogador_id>": {"origins": "*"} # <-- ADICIONE ESTA
+    r"/jogador/editar/<int:jogador_id>": {"origins": "*"}
 })
 
 # --- MODELO DE DADOS ---
@@ -77,6 +77,7 @@ def adicionar_jogador_db():
         )
         db.session.add(novo_jogador)
         db.session.commit()
+        db.session.remove() # <-- db.session.remove() ADICIONADO
         return jsonify({
             "mensagem": "Jogador adicionado com sucesso!",
             "jogador": {
@@ -88,6 +89,7 @@ def adicionar_jogador_db():
         }), 201
     except Exception as e:
         db.session.rollback()
+        db.session.remove() # <-- db.session.remove() ADICIONADO
         app.logger.error(f"Erro ao adicionar jogador: {e}", exc_info=True)
         return jsonify({"erro": "Erro interno ao salvar jogador"}), 500
 
@@ -107,6 +109,8 @@ def get_jogadores():
     except Exception as e:
         app.logger.error(f"Erro ao buscar jogadores: {e}", exc_info=True)
         return jsonify({"erro": "Erro interno ao buscar jogadores"}), 500
+    finally: # Garante que a sessão seja removida mesmo se a busca for bem-sucedida
+        db.session.remove() # <-- db.session.remove() ADICIONADO para rotas GET também
 
 @app.route('/jogador/excluir/<int:jogador_id>', methods=['DELETE'])
 def excluir_jogador_db(jogador_id):
@@ -114,9 +118,11 @@ def excluir_jogador_db(jogador_id):
         jogador_para_excluir = Jogador.query.get_or_404(jogador_id)
         db.session.delete(jogador_para_excluir)
         db.session.commit()
+        db.session.remove() # <-- db.session.remove() ADICIONADO
         return jsonify({"mensagem": f"Jogador '{jogador_para_excluir.nome}' excluído com sucesso!"}), 200
     except Exception as e:
         db.session.rollback()
+        db.session.remove() # <-- db.session.remove() ADICIONADO
         app.logger.error(f"Erro ao excluir jogador ID {jogador_id}: {e}", exc_info=True)
         return jsonify({"erro": "Erro interno ao excluir jogador"}), 500
 
@@ -127,20 +133,17 @@ def editar_jogador_db(jogador_id):
         jogador_para_editar = Jogador.query.get_or_404(jogador_id)
         dados = request.get_json()
 
-        # Validação básica dos dados recebidos
         if not dados:
             return jsonify({"erro": "Nenhum dado fornecido para atualização"}), 400
         
-        # Atualiza os campos do objeto jogador com os dados recebidos
-        # Usamos .get() para o caso de algum campo não ser enviado na requisição
         jogador_para_editar.nome = dados.get('nome', jogador_para_editar.nome)
         jogador_para_editar.genero = dados.get('genero', jogador_para_editar.genero)
         
-        # Para as notas, se 'notas' estiver nos dados, atualize. Senão, mantenha as antigas.
         if 'notas' in dados:
             jogador_para_editar.notas = dados['notas']
         
-        db.session.commit() # Salva as alterações no banco
+        db.session.commit()
+        db.session.remove() # <-- db.session.remove() ADICIONADO
         
         return jsonify({
             "mensagem": f"Jogador '{jogador_para_editar.nome}' atualizado com sucesso!",
@@ -153,6 +156,7 @@ def editar_jogador_db(jogador_id):
         }), 200
     except Exception as e:
         db.session.rollback()
+        db.session.remove() # <-- db.session.remove() ADICIONADO
         app.logger.error(f"Erro ao editar jogador ID {jogador_id}: {e}", exc_info=True)
         return jsonify({"erro": "Erro interno ao editar jogador"}), 500
 
@@ -169,7 +173,6 @@ def handle_balanceamento():
     
     times_finais, provas_finais, banco = balancear_times_avancado(jogadores_data, num_times, pessoas_por_time, pesos)
     if times_finais is None:
-        # Se 'banco' contém a mensagem de erro, passamos ela. Senão, uma genérica.
         msg_erro = banco.get("erro") if isinstance(banco, dict) and "erro" in banco else "Erro no balanceamento."
         return jsonify({"erro": msg_erro}), 400
         
@@ -180,38 +183,25 @@ def handle_balanceamento():
     })
 
 def balancear_times_avancado(jogadores_param, num_times, pessoas_por_time, pesos):
+    # ... (código do balancear_times_avancado como antes) ...
     jogadores_necessarios = num_times * pessoas_por_time
     jogadores_disponiveis = len(jogadores_param)
-
     if jogadores_disponiveis < jogadores_necessarios:
         return None, None, {"erro": f"Jogadores insuficientes. São necessários {jogadores_necessarios}, mas apenas {jogadores_disponiveis} estão disponíveis."}
-
     jogadores_copia = [j.copy() for j in jogadores_param]
-
     for jogador_obj in jogadores_copia:
-        notas_vals = jogador_obj.get('notas', {}).values() # Usar .get para segurança
+        notas_vals = jogador_obj.get('notas', {}).values()
         jogador_obj['potencial'] = sum(notas_vals) / len(notas_vals) if notas_vals else 0.0
-    
     jogadores_ordenados_geral = sorted(jogadores_copia, key=lambda j: j.get('potencial', 0.0), reverse=True)
     jogadores_selecionados = jogadores_ordenados_geral[:jogadores_necessarios]
     banco_de_reservas = jogadores_ordenados_geral[jogadores_necessarios:]
-
     for j_obj in jogadores_selecionados:
-        j_obj['craque'] = False # Inicializa como não craque
-
-    # Ordena novamente apenas os selecionados para definir os craques entre eles
+        j_obj['craque'] = False
     jogadores_ordenados_selecionados = sorted(jogadores_selecionados, key=lambda j: j.get('potencial', 0.0), reverse=True)
     if jogadores_ordenados_selecionados:
         num_craques_a_marcar = len(jogadores_ordenados_selecionados) // 3
         for i in range(min(num_craques_a_marcar, len(jogadores_ordenados_selecionados))):
             jogadores_ordenados_selecionados[i]['craque'] = True
-    
-    # Embaralhamento tático nos melhores *selecionados*
-    # Nota: A lógica original embaralhava antes da seleção final para o jogo, 
-    #       aqui estamos embaralhando os já selecionados para a alocação.
-    #       Se a intenção da variação tática é influenciar *quem é selecionado*,
-    #       o embaralhamento precisaria ser antes de `jogadores_selecionados = ...`
-    #       Por ora, mantendo o embaralhamento dos que vão para alocação.
     if jogadores_ordenados_selecionados:
         metade_superior = jogadores_ordenados_selecionados[:len(jogadores_ordenados_selecionados)//2]
         metade_inferior = jogadores_ordenados_selecionados[len(jogadores_ordenados_selecionados)//2:]
@@ -219,17 +209,13 @@ def balancear_times_avancado(jogadores_param, num_times, pessoas_por_time, pesos
         jogadores_para_alocar = metade_superior + metade_inferior
     else:
         jogadores_para_alocar = []
-
-
     if not jogadores_para_alocar:
         return [], [], banco_de_reservas
     if not jogadores_para_alocar[0].get('notas'):
         app.logger.error("Primeiro jogador para alocar não tem 'notas': %s", jogadores_para_alocar[0])
         return [], [], banco_de_reservas 
-
     categorias = list(jogadores_para_alocar[0]['notas'].keys())
     times = [[] for _ in range(num_times)]
-
     for jogador_obj_alocar in jogadores_para_alocar:
         melhor_time_idx = -1
         menor_custo = float('inf')
@@ -243,16 +229,12 @@ def balancear_times_avancado(jogadores_param, num_times, pessoas_por_time, pesos
                     numeros_validos = [v for v in valores_cat if isinstance(v, (int, float))]
                     if len(numeros_validos) > 1:
                          custo_tecnico += statistics.stdev(numeros_validos)
-            
             tamanhos_times = [len(t) for t in times]
             custo_tamanho = statistics.stdev(tamanhos_times) if len(set(tamanhos_times)) > 1 else 0
-            
             contagem_craques_times = [sum(1 for p in t if p.get('craque', False)) for t in times]
             custo_talentos = statistics.stdev(contagem_craques_times) if len(set(contagem_craques_times)) > 1 else 0
-            
             contagem_genero_m_times = [sum(1 for p in t if p.get('genero') == 'M') for t in times]
             custo_genero = statistics.stdev(contagem_genero_m_times) if len(set(contagem_genero_m_times)) > 1 else 0
-            
             custo_total = (custo_tecnico * pesos.get('tecnico', 1.0)) + \
                           (custo_tamanho * pesos.get('tamanho', 1.0)) + \
                           (custo_talentos * pesos.get('talentos', 1.0)) + \
@@ -263,16 +245,11 @@ def balancear_times_avancado(jogadores_param, num_times, pessoas_por_time, pesos
             times[i].pop()
         if melhor_time_idx != -1 :
              times[melhor_time_idx].append(jogador_obj_alocar)
-        elif times: # Se nenhum time foi "melhor" (ex: todos custo zero), adiciona ao primeiro
+        elif times: 
             times[0].append(jogador_obj_alocar)
-        # Se não há times (num_times=0), o jogador não é alocado (o que não deve acontecer)
-
     provas_equilibrio = []
     for t in times:
-        # Garante que categorias sejam definidas mesmo se o time estiver vazio,
-        # buscando do primeiro jogador alocado globalmente, se houver.
         cats_para_soma = categorias if t and t[0].get('notas') else (list(jogadores_para_alocar[0]['notas'].keys()) if jogadores_para_alocar and jogadores_para_alocar[0].get('notas') else [])
-        
         prova = {
             "jogadores_total": len(t),
             "genero_m": sum(1 for p in t if p.get('genero') == 'M'),
@@ -284,8 +261,6 @@ def balancear_times_avancado(jogadores_param, num_times, pessoas_por_time, pesos
         provas_equilibrio.append(prova)
     return times, provas_equilibrio, banco_de_reservas
 
-# Cria as tabelas no banco de dados se elas não existirem
-# Isso é executado quando o aplicativo é iniciado
 with app.app_context():
     db.create_all()
 
