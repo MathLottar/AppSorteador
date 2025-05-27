@@ -32,7 +32,8 @@ db = SQLAlchemy(app)
 CORS(app, resources={
     r"/balancear": {"origins": "*"},
     r"/jogador/adicionar": {"origins": "*"},
-    r"/jogadores": {"origins": "*"}
+    r"/jogadores": {"origins": "*"},
+    r"/jogador/excluir/<int:jogador_id>": {"origins": "*"} # <-- ADICIONE ESTA
 })
 
 class Jogador(db.Model):
@@ -97,6 +98,23 @@ def get_jogadores():
     except Exception as e:
         app.logger.error(f"Erro ao buscar jogadores: {e}", exc_info=True)
         return jsonify({"erro": "Erro interno ao buscar jogadores"}), 500
+
+# ROTA PARA EXCLUIR UM JOGADOR DO BANCO DE DADOS
+@app.route('/jogador/excluir/<int:jogador_id>', methods=['DELETE'])
+def excluir_jogador_db(jogador_id):
+    try:
+        # Tenta encontrar o jogador pelo ID. Se não encontrar, retorna erro 404.
+        jogador_para_excluir = Jogador.query.get_or_404(jogador_id)
+        
+        db.session.delete(jogador_para_excluir) # Marca o jogador para exclusão
+        db.session.commit() # Confirma a exclusão no banco
+        
+        return jsonify({"mensagem": f"Jogador '{jogador_para_excluir.nome}' excluído com sucesso!"}), 200
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Erro ao excluir jogador ID {jogador_id}: {e}", exc_info=True)
+        return jsonify({"erro": "Erro interno ao excluir jogador"}), 500
+
 
 @app.route('/balancear', methods=['POST'])
 def handle_balanceamento():

@@ -19,22 +19,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const bancoContainer = document.getElementById('banco-container');
 
     // --- VARIÁVEL PARA GUARDAR NOSSOS DADOS ---
-    let jogadores = []; // Esta lista agora será populada pelo banco de dados!
+    let jogadores = [];
 
     // --- FUNÇÕES ---
 
-    // NOVO: Função para carregar jogadores do banco
     async function carregarJogadoresDoBanco() {
         try {
-            const response = await fetch('/jogadores'); // Chama nossa nova rota GET
+            const response = await fetch('/jogadores');
             if (!response.ok) {
-                // Se o servidor retornar um erro (ex: 500)
                 const errData = await response.json().catch(() => ({ erro: "Erro desconhecido ao carregar jogadores." }));
                 throw errData;
             }
             const jogadoresDoBanco = await response.json();
-            jogadores = jogadoresDoBanco; // Substitui a lista local pela lista do banco
-            renderizarListaJogadores(); // Renderiza a lista na tela
+            jogadores = jogadoresDoBanco;
+            renderizarListaJogadores();
             console.log('Jogadores carregados do banco:', jogadores);
         } catch (error) {
             console.error('Erro ao carregar jogadores do banco:', error);
@@ -42,43 +40,40 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // MODIFICADO: Renomeada para renderizar a lista de jogadores (geralmente vinda do banco)
-    // Esta função agora será a principal para mostrar os jogadores na "Lista de Jogadores Confirmados"
-    // que no futuro será a nossa "Lista de Jogadores Cadastrados" para seleção.
+    // MODIFICADO: O botão de remover agora chama excluirJogadorDoBanco
     function renderizarListaJogadores() {
         listaJogadoresUl.innerHTML = '';
-        jogadores.forEach((jogador, index) => {
+        jogadores.forEach((jogador) => { // Removido 'index' pois usaremos jogador.id
             const li = document.createElement('li');
-            // Mostra o nome e talvez o ID do banco para referência (opcional)
             li.textContent = `${jogador.nome} (Gênero: ${jogador.genero})`;
-            // Id: ${jogador.id || 'Novo'}
 
-            const removeBtn = document.createElement('button');
-            removeBtn.textContent = 'Remover';
-            removeBtn.style.width = 'auto';
-            removeBtn.style.backgroundColor = '#ef4444';
-            removeBtn.onclick = () => {
-                // A lógica de remover do banco de dados virá depois.
-                // Por enquanto, apenas remove da lista local e atualiza a tela.
-                console.warn("Funcionalidade 'Remover do Banco' ainda não implementada.");
-                jogadores.splice(index, 1);
-                renderizarListaJogadores();
+            const excluirBtn = document.createElement('button'); // Nome do botão alterado para clareza
+            excluirBtn.textContent = 'Excluir';
+            excluirBtn.className = 'btn-excluir'; // Adicionada uma classe para possível estilização
+            excluirBtn.style.width = 'auto';
+            excluirBtn.style.backgroundColor = '#ef4444'; // Vermelho
+            excluirBtn.style.marginLeft = '10px'; // Adiciona um espaço
+
+            // MODIFICADO: Chama a função para excluir do banco
+            excluirBtn.onclick = () => {
+                // Adiciona uma confirmação antes de excluir
+                if (confirm(`Tem certeza que deseja excluir ${jogador.nome} permanentemente?`)) {
+                    excluirJogadorDoBanco(jogador.id);
+                }
             };
-            li.appendChild(removeBtn);
+            li.appendChild(excluirBtn);
             listaJogadoresUl.appendChild(li);
         });
         contadorJogadoresSpan.textContent = jogadores.length;
     }
 
-    // MODIFICADO: Função adicionarJogador
     async function adicionarJogador() {
         const nome = nomeJogadorInput.value.trim();
         if (!nome) {
             alert('Por favor, digite o nome do jogador.');
             return;
         }
-
-        const jogadorParaSalvar = { // Objeto enviado ao backend
+        const jogadorParaSalvar = { /* ... (como antes) ... */
             nome: nome,
             genero: generoJogadorSelect.value,
             notas: {
@@ -89,55 +84,75 @@ document.addEventListener('DOMContentLoaded', () => {
                 movimentacao: parseInt(notaMovimentacaoInput.value)
             }
         };
-
         try {
             const response = await fetch('/jogador/adicionar', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', },
                 body: JSON.stringify(jogadorParaSalvar)
             });
-
             if (!response.ok) {
                 const errData = await response.json().catch(() => ({ erro: "Erro desconhecido ao salvar jogador." }));
                 throw errData;
             }
             const data = await response.json();
             console.log('Jogador salvo no banco:', data.jogador);
-            // alert(data.mensagem); // Opcional: alerta de sucesso
-
-            // MODIFICADO: Após salvar com sucesso, recarrega a lista do banco
             await carregarJogadoresDoBanco();
-
         } catch (error) {
             console.error('Erro ao salvar jogador no banco:', error);
             const mensagemErro = error.erro || 'Erro de conexão ao tentar salvar jogador.';
             alert(mensagemErro);
         }
-
         nomeJogadorInput.value = '';
         nomeJogadorInput.focus();
-        // A lista será atualizada pelo carregarJogadoresDoBanco()
     }
 
+    // NOVO: Função para excluir um jogador do banco de dados
+    async function excluirJogadorDoBanco(jogadorId) {
+        try {
+            const response = await fetch(`/jogador/excluir/${jogadorId}`, {
+                method: 'DELETE' // Usamos o método HTTP DELETE
+            });
+
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({ erro: "Erro desconhecido ao excluir jogador." }));
+                throw errData;
+            }
+            const data = await response.json();
+            console.log(data.mensagem); // Ex: "Jogador 'Nome' excluído com sucesso!"
+            alert(data.mensagem); // Mostra a mensagem de sucesso
+
+            // Recarrega a lista de jogadores do banco para atualizar a tela
+            await carregarJogadoresDoBanco();
+
+        } catch (error) {
+            console.error('Erro ao excluir jogador:', error);
+            const mensagemErro = error.erro || 'Não foi possível excluir o jogador.';
+            alert(mensagemErro);
+        }
+    }
 
     async function balancearTimes() {
-        // O balanceamento usará os jogadores que estão na variável global 'jogadores'
-        // que agora é populada pelo banco de dados.
         if (jogadores.length === 0) {
             alert('Não há jogadores carregados ou adicionados para balancear!');
             return;
         }
-
         const dadosParaEnviar = {
             num_times: parseInt(numTimesInput.value),
             pessoas_por_time: parseInt(pessoasPorTimeInput.value),
             jogadores: jogadores,
-            pesos: { /* ... seus pesos ... */ }
+            pesos: {
+                "tecnico": 1.0,
+                "tamanho": 2.0,
+                "talentos": 1.5,
+                "genero": 1.2
+            }
         };
-
         try {
-            const response = await fetch('/balancear', { /* ... */ });
-            // ... (resto da função balancearTimes como antes) ...
+            const response = await fetch('/balancear', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(dadosParaEnviar)
+            });
             const resultado = await response.json();
             if (!response.ok) {
                 alert(`Erro do servidor: ${resultado.erro || 'Erro desconhecido'}`);
@@ -151,7 +166,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderizarResultados(resultado) {
-        // ... (função renderizarResultados como antes) ...
         timesContainer.innerHTML = '';
         bancoContainer.innerHTML = '';
         resultado.times_balanceados.forEach((time, index) => {
@@ -202,6 +216,5 @@ document.addEventListener('DOMContentLoaded', () => {
     btnBalancear.addEventListener('click', balancearTimes);
 
     // --- INICIALIZAÇÃO ---
-    // NOVO: Chama a função para carregar os jogadores do banco assim que a página estiver pronta
     carregarJogadoresDoBanco();
 });
