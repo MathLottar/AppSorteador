@@ -196,3 +196,10 @@ button:hover {
 .btn-editar:hover {
     background-color: #d97706;
 }
+
+/* ... (todos os seus estilos anteriores) ... */
+
+.hidden {
+    display: none !important;
+    /* !important para garantir que vai esconder */
+}
