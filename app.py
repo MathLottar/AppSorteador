@@ -1,21 +1,71 @@
-# Adicionamos 'render_template' para servir nosso arquivo HTML
+# Novas importações
+import os
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
+from flask_sqlalchemy import SQLAlchemy
 import statistics
 import random
 
-app = Flask(__name__)
+# --- CONFIGURAÇÃO DO APP E DO BANCO DE DADOS ---
+app = Flask(__name__,
+            static_folder='static',
+            template_folder='templates')
+
+# Pega a URL do banco de dados da variável de ambiente que configuramos no Render
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Inicializa o 'controlador' do banco de dados
+db = SQLAlchemy(app)
+
 CORS(app, resources={r"/balancear": {"origins": "*"}})
 
-# --- ROTA NOVA PARA A PÁGINA INICIAL ---
+
+# --- MODELO DE DADOS: A PLANTA BAIXA DA NOSSA TABELA ---
+# Esta classe define como será a nossa tabela 'jogador' no banco de dados.
+class Jogador(db.Model):
+    id = db.Column(db.Integer, primary_key=True) # ID único para cada jogador
+    nome = db.Column(db.String(100), nullable=False) # Nome do jogador
+    genero = db.Column(db.String(1), nullable=False) # 'M' ou 'F'
+    # Usamos o tipo JSON para armazenar as notas. É flexível e perfeito para nosso caso!
+    notas = db.Column(db.JSON, nullable=False)
+
+    def __repr__(self):
+        return f'<Jogador {self.nome}>'
+
+
+# --- ROTAS E LÓGICA DA APLICAÇÃO ---
+
 @app.route('/')
 def index():
-    # Esta função serve o arquivo 'index.html' que está na pasta 'templates'
     return render_template('index.html')
 
-# --- O RESTANTE DO CÓDIGO CONTINUA IGUAL ---
+@app.route('/balancear', methods=['POST'])
+def handle_balanceamento():
+    # ... (a função de balanceamento continua a mesma, não precisa de alterações agora)
+    dados = request.get_json()
+    
+    if not dados or 'jogadores' not in dados or 'num_times' not in dados or 'pessoas_por_time' not in dados:
+        return jsonify({"erro": "Dados incompletos."}), 400
+
+    jogadores = dados.get('jogadores', [])
+    num_times = dados.get('num_times', 2)
+    pessoas_por_time = dados.get('pessoas_por_time', 0)
+    pesos = dados.get('pesos', {})
+    
+    times_finais, provas_finais, banco = balancear_times_avancado(jogadores, num_times, pessoas_por_time, pesos)
+
+    if times_finais is None:
+        return jsonify(banco), 400
+
+    return jsonify({
+        "times_balanceados": times_finais,
+        "banco_de_reservas": banco,
+        "provas_do_equilibrio": provas_finais
+    })
+
 def balancear_times_avancado(jogadores, num_times, pessoas_por_time, pesos):
-    # ... (toda a lógica de balanceamento que já temos)
+    # (Toda a sua lógica de balanceamento aqui, sem nenhuma alteração)
     jogadores_necessarios = num_times * pessoas_por_time
     jogadores_disponiveis = len(jogadores)
 
@@ -92,29 +142,10 @@ def balancear_times_avancado(jogadores, num_times, pessoas_por_time, pesos):
     return times, provas_equilibrio, banco_de_reservas
 
 
-@app.route('/balancear', methods=['POST'])
-def handle_balanceamento():
-    # ... (a função handle_balanceamento continua a mesma)
-    dados = request.get_json()
-    
-    if not dados or 'jogadores' not in dados or 'num_times' not in dados or 'pessoas_por_time' not in dados:
-        return jsonify({"erro": "Dados incompletos. É preciso enviar 'jogadores', 'num_times' e 'pessoas_por_time'."}), 400
-
-    jogadores = dados.get('jogadores', [])
-    num_times = dados.get('num_times', 2)
-    pessoas_por_time = dados.get('pessoas_por_time', 0)
-    pesos = dados.get('pesos', {})
-    
-    times_finais, provas_finais, banco = balancear_times_avancado(jogadores, num_times, pessoas_por_time, pesos)
-
-    if times_finais is None:
-        return jsonify(banco), 400
-
-    return jsonify({
-        "times_balanceados": times_finais,
-        "banco_de_reservas": banco,
-        "provas_do_equilibrio": provas_finais
-    })
+# Este bloco de código garante que, quando a aplicação iniciar,
+# ela verificará se as tabelas (como a 'jogador') existem e, se não, as criará.
+with app.app_context():
+    db.create_all()
 
 if __name__ == '__main__':
     app.run(debug=True)
