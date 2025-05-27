@@ -9,33 +9,43 @@ app = Flask(__name__,
             static_folder='static',
             template_folder='templates')
 
+# --- CONFIGURAÇÃO DO BANCO DE DADOS (VERSÃO ROBUSTA) ---
+# Define o caminho base do projeto, usado para o banco de dados SQLite local
 basedir = os.path.abspath(os.path.dirname(__file__))
 
-db_url_env = os.environ.get('DATABASE_URL')
-if db_url_env:
-    if db_url_env.startswith("postgres://"):
-        db_url_env = db_url_env.replace("postgres://", "postgresql://", 1)
-    app.config['SQLALCHEMY_DATABASE_URI'] = db_url_env
-else:
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'app_local.db')
+database_url_from_env = os.environ.get('DATABASE_URL')
 
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# NOVO: Adiciona opções para o SQLAlchemy Engine, especificamente para SSL com PostgreSQL
-if app.config['SQLALCHEMY_DATABASE_URI'] and app.config['SQLALCHEMY_DATABASE_URI'].startswith("postgresql://"):
+if database_url_from_env:
+    # Se estiver rodando no Render (ou qualquer ambiente com DATABASE_URL definido)
+    # Garante que a URL use 'postgresql://' que é o esperado pelo SQLAlchemy
+    if database_url_from_env.startswith("postgres://"):
+        database_url_from_env = database_url_from_env.replace("postgres://", "postgresql://", 1)
+    
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url_from_env
+    # Adiciona explicitamente as opções do engine para SSL quando for PostgreSQL
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
         'connect_args': {'sslmode': 'require'}
     }
+else:
+    # Configuração para o banco de dados SQLite local se DATABASE_URL não estiver definida
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'app_local.db')
+    # Opcional: remove engine_options se estiver usando SQLite e elas foram definidas por algum motivo
+    if 'SQLALCHEMY_ENGINE_OPTIONS' in app.config:
+        del app.config['SQLALCHEMY_ENGINE_OPTIONS']
+
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
+# --- FIM DA CONFIGURAÇÃO DO BANCO DE DADOS ---
 
 CORS(app, resources={
     r"/balancear": {"origins": "*"},
     r"/jogador/adicionar": {"origins": "*"},
     r"/jogadores": {"origins": "*"},
-    r"/jogador/excluir/<int:jogador_id>": {"origins": "*"} # <-- ADICIONE ESTA
+    r"/jogador/excluir/<int:jogador_id>": {"origins": "*"}
 })
 
+# --- MODELO DE DADOS ---
 class Jogador(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False)
@@ -50,6 +60,7 @@ class Jogador(db.Model):
     def __repr__(self):
         return f'<Jogador {self.nome}>'
 
+# --- ROTAS DA APLICAÇÃO ---
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -78,7 +89,6 @@ def adicionar_jogador_db():
         }), 201
     except Exception as e:
         db.session.rollback()
-        # Para depuração no Render, é bom logar o erro completo
         app.logger.error(f"Erro ao adicionar jogador: {e}", exc_info=True)
         return jsonify({"erro": "Erro interno ao salvar jogador"}), 500
 
@@ -99,22 +109,17 @@ def get_jogadores():
         app.logger.error(f"Erro ao buscar jogadores: {e}", exc_info=True)
         return jsonify({"erro": "Erro interno ao buscar jogadores"}), 500
 
-# ROTA PARA EXCLUIR UM JOGADOR DO BANCO DE DADOS
 @app.route('/jogador/excluir/<int:jogador_id>', methods=['DELETE'])
 def excluir_jogador_db(jogador_id):
     try:
-        # Tenta encontrar o jogador pelo ID. Se não encontrar, retorna erro 404.
         jogador_para_excluir = Jogador.query.get_or_404(jogador_id)
-        
-        db.session.delete(jogador_para_excluir) # Marca o jogador para exclusão
-        db.session.commit() # Confirma a exclusão no banco
-        
+        db.session.delete(jogador_para_excluir)
+        db.session.commit()
         return jsonify({"mensagem": f"Jogador '{jogador_para_excluir.nome}' excluído com sucesso!"}), 200
     except Exception as e:
         db.session.rollback()
         app.logger.error(f"Erro ao excluir jogador ID {jogador_id}: {e}", exc_info=True)
         return jsonify({"erro": "Erro interno ao excluir jogador"}), 500
-
 
 @app.route('/balancear', methods=['POST'])
 def handle_balanceamento():
@@ -128,7 +133,10 @@ def handle_balanceamento():
     
     times_finais, provas_finais, banco = balancear_times_avancado(jogadores_data, num_times, pessoas_por_time, pesos)
     if times_finais is None:
-        return jsonify(banco), 400
+        # Se 'banco' contém a mensagem de erro, passamos ela. Senão, uma genérica.
+        msg_erro = banco.get("erro") if isinstance(banco, dict) and "erro" in banco else "Erro no balanceamento."
+        return jsonify({"erro": msg_erro}), 400
+        
     return jsonify({
         "times_balanceados": times_finais,
         "banco_de_reservas": banco,
@@ -145,32 +153,42 @@ def balancear_times_avancado(jogadores_param, num_times, pessoas_por_time, pesos
     jogadores_copia = [j.copy() for j in jogadores_param]
 
     for jogador_obj in jogadores_copia:
-        notas_vals = jogador_obj['notas'].values()
-        jogador_obj['potencial'] = sum(notas_vals) / len(notas_vals) if notas_vals else 0
+        notas_vals = jogador_obj.get('notas', {}).values() # Usar .get para segurança
+        jogador_obj['potencial'] = sum(notas_vals) / len(notas_vals) if notas_vals else 0.0
     
-    jogadores_ordenados_geral = sorted(jogadores_copia, key=lambda j: j['potencial'], reverse=True)
+    jogadores_ordenados_geral = sorted(jogadores_copia, key=lambda j: j.get('potencial', 0.0), reverse=True)
     jogadores_selecionados = jogadores_ordenados_geral[:jogadores_necessarios]
     banco_de_reservas = jogadores_ordenados_geral[jogadores_necessarios:]
 
     for j_obj in jogadores_selecionados:
-        j_obj['craque'] = False
+        j_obj['craque'] = False # Inicializa como não craque
 
-    jogadores_ordenados = sorted(jogadores_selecionados, key=lambda j_obj: j_obj['potencial'], reverse=True)
-    if jogadores_ordenados:
-        num_craques_a_marcar = len(jogadores_ordenados) // 3
-        for i in range(min(num_craques_a_marcar, len(jogadores_ordenados))):
-            jogadores_ordenados[i]['craque'] = True
+    # Ordena novamente apenas os selecionados para definir os craques entre eles
+    jogadores_ordenados_selecionados = sorted(jogadores_selecionados, key=lambda j: j.get('potencial', 0.0), reverse=True)
+    if jogadores_ordenados_selecionados:
+        num_craques_a_marcar = len(jogadores_ordenados_selecionados) // 3
+        for i in range(min(num_craques_a_marcar, len(jogadores_ordenados_selecionados))):
+            jogadores_ordenados_selecionados[i]['craque'] = True
     
-    metade_superior = jogadores_ordenados[:len(jogadores_ordenados)//2]
-    metade_inferior = jogadores_ordenados[len(jogadores_ordenados)//2:]
-    random.shuffle(metade_superior)
-    jogadores_para_alocar = metade_superior + metade_inferior
+    # Embaralhamento tático nos melhores *selecionados*
+    # Nota: A lógica original embaralhava antes da seleção final para o jogo, 
+    #       aqui estamos embaralhando os já selecionados para a alocação.
+    #       Se a intenção da variação tática é influenciar *quem é selecionado*,
+    #       o embaralhamento precisaria ser antes de `jogadores_selecionados = ...`
+    #       Por ora, mantendo o embaralhamento dos que vão para alocação.
+    if jogadores_ordenados_selecionados:
+        metade_superior = jogadores_ordenados_selecionados[:len(jogadores_ordenados_selecionados)//2]
+        metade_inferior = jogadores_ordenados_selecionados[len(jogadores_ordenados_selecionados)//2:]
+        random.shuffle(metade_superior)
+        jogadores_para_alocar = metade_superior + metade_inferior
+    else:
+        jogadores_para_alocar = []
+
 
     if not jogadores_para_alocar:
         return [], [], banco_de_reservas
-    if not jogadores_para_alocar[0].get('notas'): # Checagem se o primeiro jogador tem notas
+    if not jogadores_para_alocar[0].get('notas'):
         app.logger.error("Primeiro jogador para alocar não tem 'notas': %s", jogadores_para_alocar[0])
-        # Você pode retornar um erro ou uma lista vazia, dependendo de como quer tratar
         return [], [], banco_de_reservas 
 
     categorias = list(jogadores_para_alocar[0]['notas'].keys())
@@ -181,18 +199,24 @@ def balancear_times_avancado(jogadores_param, num_times, pessoas_por_time, pesos
         menor_custo = float('inf')
         for i in range(num_times):
             times[i].append(jogador_obj_alocar)
-            somas_categorias_temp = [{cat: sum(p['notas'][cat] for p in t) for cat in categorias} for t in times]
+            somas_categorias_temp = [{cat: sum(p.get('notas',{}).get(cat,0) for p in t) for cat in categorias} for t in times]
             custo_tecnico = 0
             for cat in categorias:
                 valores_cat = [s[cat] for s in somas_categorias_temp]
-                if len(valores_cat) > 1 and len([v for v in valores_cat if isinstance(v, (int, float))]) > 1:
-                    custo_tecnico += statistics.stdev(valores_cat)
+                if len(valores_cat) > 1 :
+                    numeros_validos = [v for v in valores_cat if isinstance(v, (int, float))]
+                    if len(numeros_validos) > 1:
+                         custo_tecnico += statistics.stdev(numeros_validos)
+            
             tamanhos_times = [len(t) for t in times]
             custo_tamanho = statistics.stdev(tamanhos_times) if len(set(tamanhos_times)) > 1 else 0
-            contagem_craques_times = [sum(1 for p in t if p['craque']) for t in times]
+            
+            contagem_craques_times = [sum(1 for p in t if p.get('craque', False)) for t in times]
             custo_talentos = statistics.stdev(contagem_craques_times) if len(set(contagem_craques_times)) > 1 else 0
-            contagem_genero_m_times = [sum(1 for p in t if p['genero'] == 'M') for t in times]
+            
+            contagem_genero_m_times = [sum(1 for p in t if p.get('genero') == 'M') for t in times]
             custo_genero = statistics.stdev(contagem_genero_m_times) if len(set(contagem_genero_m_times)) > 1 else 0
+            
             custo_total = (custo_tecnico * pesos.get('tecnico', 1.0)) + \
                           (custo_tamanho * pesos.get('tamanho', 1.0)) + \
                           (custo_talentos * pesos.get('talentos', 1.0)) + \
@@ -203,25 +227,29 @@ def balancear_times_avancado(jogadores_param, num_times, pessoas_por_time, pesos
             times[i].pop()
         if melhor_time_idx != -1 :
              times[melhor_time_idx].append(jogador_obj_alocar)
-        else: # Caso simples para garantir que o jogador seja adicionado a algum time
-            if times: # Garante que a lista de times não está vazia
-                times[0].append(jogador_obj_alocar)
-            # else: O que fazer se não houver times? Por ora, o jogador não seria alocado.
-            # Isso não deve acontecer se num_times > 0
+        elif times: # Se nenhum time foi "melhor" (ex: todos custo zero), adiciona ao primeiro
+            times[0].append(jogador_obj_alocar)
+        # Se não há times (num_times=0), o jogador não é alocado (o que não deve acontecer)
 
     provas_equilibrio = []
     for t in times:
+        # Garante que categorias sejam definidas mesmo se o time estiver vazio,
+        # buscando do primeiro jogador alocado globalmente, se houver.
+        cats_para_soma = categorias if t and t[0].get('notas') else (list(jogadores_para_alocar[0]['notas'].keys()) if jogadores_para_alocar and jogadores_para_alocar[0].get('notas') else [])
+        
         prova = {
             "jogadores_total": len(t),
-            "genero_m": sum(1 for p in t if p['genero'] == 'M'),
-            "genero_f": sum(1 for p in t if p['genero'] == 'F'),
-            "craques_total": sum(1 for p in t if p['craque']),
-            "soma_potencial": sum(p['potencial'] for p in t),
-            "somas_habilidades": {cat: sum(p['notas'][cat] for p in t) for cat in categorias} if categorias else {} # Adicionado if categorias
+            "genero_m": sum(1 for p in t if p.get('genero') == 'M'),
+            "genero_f": sum(1 for p in t if p.get('genero') == 'F'),
+            "craques_total": sum(1 for p in t if p.get('craque', False)),
+            "soma_potencial": sum(p.get('potencial', 0.0) for p in t),
+            "somas_habilidades": {cat: sum(p.get('notas',{}).get(cat,0) for p in t) for cat in cats_para_soma}
         }
         provas_equilibrio.append(prova)
     return times, provas_equilibrio, banco_de_reservas
 
+# Cria as tabelas no banco de dados se elas não existirem
+# Isso é executado quando o aplicativo é iniciado
 with app.app_context():
     db.create_all()
 
