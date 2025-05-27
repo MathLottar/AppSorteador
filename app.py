@@ -1,16 +1,21 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS # Importação necessária
+# Adicionamos 'render_template' para servir nosso arquivo HTML
+from flask import Flask, request, jsonify, render_template
+from flask_cors import CORS
 import statistics
 import random
 
-# --- CONFIGURAÇÃO DO SERVIDOR FLASK ---
 app = Flask(__name__)
-# ATIVAÇÃO DO CORS DE FORMA ESPECÍFICA E PERMISSIVA PARA A ROTA
 CORS(app, resources={r"/balancear": {"origins": "*"}})
 
-# --- O RESTANTE DO CÓDIGO CONTINUA EXATAMENTE IGUAL ---
+# --- ROTA NOVA PARA A PÁGINA INICIAL ---
+@app.route('/')
+def index():
+    # Esta função serve o arquivo 'index.html' que está na pasta 'templates'
+    return render_template('index.html')
+
+# --- O RESTANTE DO CÓDIGO CONTINUA IGUAL ---
 def balancear_times_avancado(jogadores, num_times, pessoas_por_time, pesos):
-    # (Toda a sua lógica de balanceamento aqui, sem nenhuma alteração)
+    # ... (toda a lógica de balanceamento que já temos)
     jogadores_necessarios = num_times * pessoas_por_time
     jogadores_disponiveis = len(jogadores)
 
@@ -89,6 +94,7 @@ def balancear_times_avancado(jogadores, num_times, pessoas_por_time, pesos):
 
 @app.route('/balancear', methods=['POST'])
 def handle_balanceamento():
+    # ... (a função handle_balanceamento continua a mesma)
     dados = request.get_json()
     
     if not dados or 'jogadores' not in dados or 'num_times' not in dados or 'pessoas_por_time' not in dados:
