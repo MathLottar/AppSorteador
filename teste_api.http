@@ -1,0 +1,61 @@
+### TESTE 1: Cenário de SUCESSO com banco de reservas
+# (18 jogadores disponíveis, mas precisamos de 4 times de 3 = 12 vagas. 6 irão para o banco)
+POST http://127.0.0.1:5000/balancear
+Content-Type: application/json
+
+{
+    "num_times": 4,
+    "pessoas_por_time": 3,
+    "pesos": { "tecnico": 1.0, "tamanho": 2.0, "talentos": 1.5, "genero": 1.2 },
+    "jogadores": [
+        {"nome": "Gabi Guimarães", "genero": "F", "notas": {"saque": 4, "passe": 5, "levantamento": 1, "ataque": 5, "movimentacao": 5}},
+        {"nome": "Bruninho", "genero": "M", "notas": {"saque": 3, "passe": 4, "levantamento": 5, "ataque": 2, "movimentacao": 4}},
+        {"nome": "Thaisa Menezes", "genero": "F", "notas": {"saque": 5, "passe": 2, "levantamento": 2, "ataque": 5, "movimentacao": 3}},
+        {"nome": "Yoandy Leal", "genero": "M", "notas": {"saque": 5, "passe": 4, "levantamento": 1, "ataque": 5, "movimentacao": 4}},
+        {"nome": "Sheilla Castro", "genero": "F", "notas": {"saque": 5, "passe": 4, "levantamento": 2, "ataque": 5, "movimentacao": 4}},
+        {"nome": "Ricardo Lucarelli", "genero": "M", "notas": {"saque": 4, "passe": 5, "levantamento": 1, "ataque": 5, "movimentacao": 4}},
+        {"nome": "Macris Carneiro", "genero": "F", "notas": {"saque": 2, "passe": 3, "levantamento": 5, "ataque": 2, "movimentacao": 5}},
+        {"nome": "Wallace de Souza", "genero": "M", "notas": {"saque": 5, "passe": 2, "levantamento": 1, "ataque": 5, "movimentacao": 2}},
+        {"nome": "Fabiana Claudino", "genero": "F", "notas": {"saque": 4, "passe": 1, "levantamento": 1, "ataque": 5, "movimentacao": 2}},
+        {"nome": "Serginho Escadinha", "genero": "M", "notas": {"saque": 1, "passe": 5, "levantamento": 2, "ataque": 1, "movimentacao": 5}},
+        {"nome": "Jaqueline Carvalho", "genero": "F", "notas": {"saque": 3, "passe": 5, "levantamento": 2, "ataque": 4, "movimentacao": 4}},
+        {"nome": "Lucão", "genero": "M", "notas": {"saque": 4, "passe": 2, "levantamento": 1, "ataque": 5, "movimentacao": 2}},
+        {"nome": "Fabi Alvim", "genero": "F", "notas": {"saque": 1, "passe": 5, "levantamento": 1, "ataque": 1, "movimentacao": 5}},
+        {"nome": "Alan Souza", "genero": "M", "notas": {"saque": 5, "passe": 2, "levantamento": 1, "ataque": 5, "movimentacao": 3}},
+        {"nome": "Carol Gattaz", "genero": "F", "notas": {"saque": 3, "passe": 2, "levantamento": 2, "ataque": 4, "movimentacao": 3}},
+        {"nome": "Giba", "genero": "M", "notas": {"saque": 4, "passe": 4, "levantamento": 2, "ataque": 4, "movimentacao": 4}},
+        {"nome": "Rosamaria", "genero": "F", "notas": {"saque": 4, "passe": 3, "levantamento": 2, "ataque": 4, "movimentacao": 4}},
+        {"nome": "Maurício Borges", "genero": "M", "notas": {"saque": 3, "passe": 4, "levantamento": 1, "ataque": 3, "movimentacao": 3}}
+    ]
+}
+
+### TESTE 2: Cenário de ERRO
+# (18 jogadores disponíveis, mas precisamos de 5 times de 4 = 20 vagas. Deve falhar.)
+POST http://127.0.0.1:5000/balancear
+Content-Type: application/json
+
+{
+    "num_times": 5,
+    "pessoas_por_time": 4,
+    "pesos": {},
+    "jogadores": [
+        {"nome": "Gabi Guimarães", "genero": "F", "notas": {"saque": 4, "passe": 5, "levantamento": 1, "ataque": 5, "movimentacao": 5}},
+        {"nome": "Bruninho", "genero": "M", "notas": {"saque": 3, "passe": 4, "levantamento": 5, "ataque": 2, "movimentacao": 4}},
+        {"nome": "Thaisa Menezes", "genero": "F", "notas": {"saque": 5, "passe": 2, "levantamento": 2, "ataque": 5, "movimentacao": 3}},
+        {"nome": "Yoandy Leal", "genero": "M", "notas": {"saque": 5, "passe": 4, "levantamento": 1, "ataque": 5, "movimentacao": 4}},
+        {"nome": "Sheilla Castro", "genero": "F", "notas": {"saque": 5, "passe": 4, "levantamento": 2, "ataque": 5, "movimentacao": 4}},
+        {"nome": "Ricardo Lucarelli", "genero": "M", "notas": {"saque": 4, "passe": 5, "levantamento": 1, "ataque": 5, "movimentacao": 4}},
+        {"nome": "Macris Carneiro", "genero": "F", "notas": {"saque": 2, "passe": 3, "levantamento": 5, "ataque": 2, "movimentacao": 5}},
+        {"nome": "Wallace de Souza", "genero": "M", "notas": {"saque": 5, "passe": 2, "levantamento": 1, "ataque": 5, "movimentacao": 2}},
+        {"nome": "Fabiana Claudino", "genero": "F", "notas": {"saque": 4, "passe": 1, "levantamento": 1, "ataque": 5, "movimentacao": 2}},
+        {"nome": "Serginho Escadinha", "genero": "M", "notas": {"saque": 1, "passe": 5, "levantamento": 2, "ataque": 1, "movimentacao": 5}},
+        {"nome": "Jaqueline Carvalho", "genero": "F", "notas": {"saque": 3, "passe": 5, "levantamento": 2, "ataque": 4, "movimentacao": 4}},
+        {"nome": "Lucão", "genero": "M", "notas": {"saque": 4, "passe": 2, "levantamento": 1, "ataque": 5, "movimentacao": 2}},
+        {"nome": "Fabi Alvim", "genero": "F", "notas": {"saque": 1, "passe": 5, "levantamento": 1, "ataque": 1, "movimentacao": 5}},
+        {"nome": "Alan Souza", "genero": "M", "notas": {"saque": 5, "passe": 2, "levantamento": 1, "ataque": 5, "movimentacao": 3}},
+        {"nome": "Carol Gattaz", "genero": "F", "notas": {"saque": 3, "passe": 2, "levantamento": 2, "ataque": 4, "movimentacao": 3}},
+        {"nome": "Giba", "genero": "M", "notas": {"saque": 4, "passe": 4, "levantamento": 2, "ataque": 4, "movimentacao": 4}},
+        {"nome": "Rosamaria", "genero": "F", "notas": {"saque": 4, "passe": 3, "levantamento": 2, "ataque": 4, "movimentacao": 4}},
+        {"nome": "Maurício Borges", "genero": "M", "notas": {"saque": 3, "passe": 4, "levantamento": 1, "ataque": 3, "movimentacao": 3}}
+    ]
+}
