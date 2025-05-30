@@ -9,20 +9,21 @@ app = Flask(__name__,
             static_folder='static',
             template_folder='templates')
 
-# --- CONFIGURAÇÃO DO BANCO DE DADOS (TENTATIVA SSL MAIS SIMPLES) ---
+# --- CONFIGURAÇÃO DO BANCO DE DADOS (TENTATIVA SSL NA URL) ---
 basedir = os.path.abspath(os.path.dirname(__file__))
 database_url_from_env = os.environ.get('DATABASE_URL')
 
 if database_url_from_env:
-    # Se estiver rodando no Render (ou qualquer ambiente com DATABASE_URL definido)
-    # Garante que a URL use 'postgresql://' que é o esperado pelo SQLAlchemy
-    current_uri = database_url_from_env
-    if current_uri.startswith("postgres://"):
-        current_uri = current_uri.replace("postgres://", "postgresql://", 1)
+    # Garante que a URL use 'postgresql://'
+    if database_url_from_env.startswith("postgres://"):
+        database_url_from_env = database_url_from_env.replace("postgres://", "postgresql://", 1)
     
-    app.config['SQLALCHEMY_DATABASE_URI'] = current_uri
-    
-    # REMOVEMOS as tentativas de forçar sslmode aqui.
+    # Adiciona '?sslmode=require' se for postgresql e não tiver 'sslmode' já na URL
+    if database_url_from_env.startswith("postgresql://") and "sslmode" not in database_url_from_env:
+        database_url_from_env += "?sslmode=require"
+        
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url_from_env
+    # Com o sslmode na URI, podemos remover ou comentar as engine_options para evitar conflito
     if 'SQLALCHEMY_ENGINE_OPTIONS' in app.config:
         del app.config['SQLALCHEMY_ENGINE_OPTIONS']
 else:
@@ -43,6 +44,7 @@ CORS(app, resources={
     r"/jogador/editar/<int:jogador_id>": {"origins": "*"}
 })
 
+# --- MODELO DE DADOS ---
 class Jogador(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False)
@@ -57,6 +59,7 @@ class Jogador(db.Model):
     def __repr__(self):
         return f'<Jogador {self.nome}>'
 
+# --- ROTAS DA APLICAÇÃO ---
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -68,7 +71,6 @@ def adicionar_jogador_db():
         return jsonify({"erro": "Dados do jogador incompletos"}), 400
     
     jogador_salvo_dados = {} # Para guardar os dados antes de fechar a sessão
-
     try:
         novo_jogador = Jogador(
             nome=dados['nome'],
@@ -76,7 +78,7 @@ def adicionar_jogador_db():
             notas=dados['notas']
         )
         db.session.add(novo_jogador)
-        db.session.commit() # O ID é gerado aqui e atribuído a novo_jogador
+        db.session.commit()
 
         # Capture os dados ANTES de remover a sessão
         jogador_salvo_dados = {
@@ -85,16 +87,15 @@ def adicionar_jogador_db():
             "genero": novo_jogador.genero,
             "notas": novo_jogador.notas
         }
-        
-        db.session.remove() # Agora podemos remover a sessão
+        db.session.remove() # <-- AJUSTE ADICIONADO
         
         return jsonify({
             "mensagem": "Jogador adicionado com sucesso!",
-            "jogador": jogador_salvo_dados # Use os dados capturados
+            "jogador": jogador_salvo_dados
         }), 201
     except Exception as e:
         db.session.rollback()
-        db.session.remove() # Remova a sessão em caso de erro também
+        db.session.remove() # <-- AJUSTE ADICIONADO
         app.logger.error(f"Erro ao adicionar jogador: {e}", exc_info=True)
         return jsonify({"erro": "Erro interno ao salvar jogador"}), 500
 
@@ -102,51 +103,77 @@ def adicionar_jogador_db():
 def get_jogadores():
     try:
         todos_os_jogadores = Jogador.query.all()
-        lista_jogadores_dict = [{"id": j.id, "nome": j.nome, "genero": j.genero, "notas": j.notas} for j in todos_os_jogadores]
+        lista_jogadores_dict = []
+        for jogador_obj in todos_os_jogadores:
+            lista_jogadores_dict.append({
+                "id": jogador_obj.id,
+                "nome": jogador_obj.nome,
+                "genero": jogador_obj.genero,
+                "notas": jogador_obj.notas
+            })
         return jsonify(lista_jogadores_dict), 200
     except Exception as e:
         app.logger.error(f"Erro ao buscar jogadores: {e}", exc_info=True)
         return jsonify({"erro": "Erro interno ao buscar jogadores"}), 500
     finally:
-        db.session.remove()
+        db.session.remove() # <-- AJUSTE ADICIONADO (para garantir limpeza após leitura)
 
 @app.route('/jogador/excluir/<int:jogador_id>', methods=['DELETE'])
 def excluir_jogador_db(jogador_id):
     try:
         jogador_para_excluir = Jogador.query.get_or_404(jogador_id)
+        nome_excluido = jogador_para_excluir.nome # Capturar antes de qualquer coisa
         db.session.delete(jogador_para_excluir)
         db.session.commit()
-        db.session.remove()
-        return jsonify({"mensagem": f"Jogador '{jogador_para_excluir.nome}' excluído com sucesso!"}), 200
+        db.session.remove() # <-- AJUSTE ADICIONADO
+        return jsonify({"mensagem": f"Jogador '{nome_excluido}' excluído com sucesso!"}), 200
     except Exception as e:
         db.session.rollback()
-        db.session.remove()
+        db.session.remove() # <-- AJUSTE ADICIONADO
         app.logger.error(f"Erro ao excluir jogador ID {jogador_id}: {e}", exc_info=True)
         return jsonify({"erro": "Erro interno ao excluir jogador"}), 500
 
+# ROTA PARA EDITAR/ATUALIZAR UM JOGADOR EXISTENTE NO BANCO
 @app.route('/jogador/editar/<int:jogador_id>', methods=['PUT'])
 def editar_jogador_db(jogador_id):
+    dados_atualizados = {} # Para guardar os dados antes de fechar a sessão
     try:
         jogador_para_editar = Jogador.query.get_or_404(jogador_id)
         dados = request.get_json()
+
         if not dados:
             return jsonify({"erro": "Nenhum dado fornecido para atualização"}), 400
+        
         jogador_para_editar.nome = dados.get('nome', jogador_para_editar.nome)
         jogador_para_editar.genero = dados.get('genero', jogador_para_editar.genero)
+        
         if 'notas' in dados:
             jogador_para_editar.notas = dados['notas']
+        
         db.session.commit()
-        db.session.remove()
-        return jsonify({"mensagem": f"Jogador '{jogador_para_editar.nome}' atualizado com sucesso!", "jogador": {"id": jogador_para_editar.id, "nome": jogador_para_editar.nome, "genero": jogador_para_editar.genero, "notas": jogador_para_editar.notas}}), 200
+        
+        # Capture os dados ANTES de remover a sessão
+        dados_atualizados = {
+            "id": jogador_para_editar.id,
+            "nome": jogador_para_editar.nome,
+            "genero": jogador_para_editar.genero,
+            "notas": jogador_para_editar.notas
+        }
+        db.session.remove() # <-- AJUSTE ADICIONADO
+        
+        return jsonify({
+            "mensagem": f"Jogador '{dados_atualizados['nome']}' atualizado com sucesso!",
+            "jogador": dados_atualizados
+        }), 200
     except Exception as e:
         db.session.rollback()
-        db.session.remove()
+        db.session.remove() # <-- AJUSTE ADICIONADO
         app.logger.error(f"Erro ao editar jogador ID {jogador_id}: {e}", exc_info=True)
         return jsonify({"erro": "Erro interno ao editar jogador"}), 500
 
+
 @app.route('/balancear', methods=['POST'])
 def handle_balanceamento():
-    # ... (código do balanceamento como antes) ...
     dados = request.get_json()
     if not dados or 'jogadores' not in dados or 'num_times' not in dados or 'pessoas_por_time' not in dados:
         return jsonify({"erro": "Dados incompletos."}), 400
@@ -159,10 +186,17 @@ def handle_balanceamento():
     if times_finais is None:
         msg_erro = banco.get("erro") if isinstance(banco, dict) and "erro" in banco else "Erro no balanceamento."
         return jsonify({"erro": msg_erro}), 400
-    return jsonify({"times_balanceados": times_finais, "banco_de_reservas": banco, "provas_do_equilibrio": provas_finais})
+        
+    return jsonify({
+        "times_balanceados": times_finais,
+        "banco_de_reservas": banco,
+        "provas_do_equilibrio": provas_finais
+    })
 
 def balancear_times_avancado(jogadores_param, num_times, pessoas_por_time, pesos):
-    # ... (código do balancear_times_avancado como antes) ...
+    # ... (código da função balancear_times_avancado, como estava antes) ...
+    # (Verifiquei seu código anterior, essa função é longa e complexa,
+    #  mas não interage diretamente com db.session, então não requer db.session.remove() aqui dentro)
     jogadores_necessarios = num_times * pessoas_por_time
     jogadores_disponiveis = len(jogadores_param)
     if jogadores_disponiveis < jogadores_necessarios:
@@ -228,7 +262,8 @@ def balancear_times_avancado(jogadores_param, num_times, pessoas_por_time, pesos
             times[0].append(jogador_obj_alocar)
     provas_equilibrio = []
     for t in times:
-        cats_para_soma = categorias if t and t[0].get('notas') else (list(jogadores_para_alocar[0]['notas'].keys()) if jogadores_para_alocar and jogadores_para_alocar[0].get('notas') else [])
+        cats_para_soma = categorias if t and len(t) > 0 and t[0].get('notas') else \
+                         (list(jogadores_para_alocar[0]['notas'].keys()) if jogadores_para_alocar and len(jogadores_para_alocar) > 0 and jogadores_para_alocar[0].get('notas') else [])
         prova = {
             "jogadores_total": len(t),
             "genero_m": sum(1 for p in t if p.get('genero') == 'M'),
@@ -240,6 +275,9 @@ def balancear_times_avancado(jogadores_param, num_times, pessoas_por_time, pesos
         provas_equilibrio.append(prova)
     return times, provas_equilibrio, banco_de_reservas
 
+
+# Cria as tabelas no banco de dados se elas não existirem
+# Isso é executado quando o aplicativo é iniciado
 with app.app_context():
     db.create_all()
 
