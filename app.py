@@ -66,15 +66,35 @@ def adicionar_jogador_db():
     dados = request.get_json()
     if not dados or 'nome' not in dados or 'genero' not in dados or 'notas' not in dados:
         return jsonify({"erro": "Dados do jogador incompletos"}), 400
+    
+    jogador_salvo_dados = {} # Para guardar os dados antes de fechar a sessão
+
     try:
-        novo_jogador = Jogador(nome=dados['nome'], genero=dados['genero'], notas=dados['notas'])
+        novo_jogador = Jogador(
+            nome=dados['nome'],
+            genero=dados['genero'],
+            notas=dados['notas']
+        )
         db.session.add(novo_jogador)
-        db.session.commit()
-        db.session.remove()
-        return jsonify({"mensagem": "Jogador adicionado com sucesso!", "jogador": {"id": novo_jogador.id, "nome": novo_jogador.nome, "genero": novo_jogador.genero, "notas": novo_jogador.notas}}), 201
+        db.session.commit() # O ID é gerado aqui e atribuído a novo_jogador
+
+        # Capture os dados ANTES de remover a sessão
+        jogador_salvo_dados = {
+            "id": novo_jogador.id,
+            "nome": novo_jogador.nome,
+            "genero": novo_jogador.genero,
+            "notas": novo_jogador.notas
+        }
+        
+        db.session.remove() # Agora podemos remover a sessão
+        
+        return jsonify({
+            "mensagem": "Jogador adicionado com sucesso!",
+            "jogador": jogador_salvo_dados # Use os dados capturados
+        }), 201
     except Exception as e:
         db.session.rollback()
-        db.session.remove()
+        db.session.remove() # Remova a sessão em caso de erro também
         app.logger.error(f"Erro ao adicionar jogador: {e}", exc_info=True)
         return jsonify({"erro": "Erro interno ao salvar jogador"}), 500
 
