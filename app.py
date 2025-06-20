@@ -224,10 +224,15 @@ def balancear_times_avancado(jogadores_param, num_times, pessoas_por_time, pesos
         jogadores_para_alocar = []
     if not jogadores_para_alocar:
         return [], [], banco_de_reservas
-    if not jogadores_para_alocar[0].get('notas'):
-        app.logger.error("Primeiro jogador para alocar não tem 'notas': %s", jogadores_para_alocar[0])
-        return [], [], banco_de_reservas 
-    categorias = list(jogadores_para_alocar[0]['notas'].keys())
+    # Garante que as categorias sejam obtidas de um jogador com notas válidas
+    categorias = []
+    for j_obj in jogadores_para_alocar:
+        if j_obj.get('notas'):
+            categorias = list(j_obj['notas'].keys())
+            break
+    if not categorias:
+        app.logger.error("Nenhum jogador com notas válidas encontrado: %s", jogadores_para_alocar)
+        return [], [], banco_de_reservas
     times = [[] for _ in range(num_times)]
     for jogador_obj_alocar in jogadores_para_alocar:
         melhor_time_idx = -1
